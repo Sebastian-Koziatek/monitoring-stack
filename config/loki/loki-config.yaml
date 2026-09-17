@@ -1,0 +1,71 @@
+# =============================================================================
+#  Loki — konfiguracja single-binary, storage na filesystem
+#  Odpowiednik /etc/loki/loki-config.yaml ze skryptu, przeniesiony na Loki 3.x
+#  (boltdb-shipper + schema v11 zastąpione przez TSDB + schema v13).
+#  Wszystkie dane lądują w wolumenie zamontowanym pod /loki.
+# =============================================================================
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: info
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+
+ingester:
+  chunk_idle_period: 5m
+  chunk_retain_period: 30s
+  wal:
+    enabled: true
+    dir: /loki/wal
+
+schema_config:
+  configs:
+    - from: 2024-04-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+  filesystem:
+    directory: /loki/chunks
+
+limits_config:
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  ingestion_rate_mb: 10
+  ingestion_burst_size_mb: 20
+  retention_period: 168h        # 7 dni — dla większych wdrożeń podnieś
+
+compactor:
+  working_directory: /loki/compactor
+  delete_request_store: filesystem
+  retention_enabled: true
+  compaction_interval: 10m
+
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+
+analytics:
+  reporting_enabled: false

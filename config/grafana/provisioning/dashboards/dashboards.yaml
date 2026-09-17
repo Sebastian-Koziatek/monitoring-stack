@@ -1,0 +1,24 @@
+# =============================================================================
+#  Grafana — provider dashboardów
+#  Wrzuć pliki .json (np. pobrane z grafana.com) do tego katalogu
+#  i zrestartuj Grafanę: docker compose restart grafana
+#
+#  Warte podpięcia na szkolenie:
+#    1860  — Node Exporter Full            (Prometheus)
+#    928   — Telegraf: system metrics      (InfluxDB)
+#    13639 — Logs / App (Loki)             (Loki)
+# =============================================================================
+
+apiVersion: 1
+
+providers:
+  - name: szkolenie
+    orgId: 1
+    folder: Szkolenie
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

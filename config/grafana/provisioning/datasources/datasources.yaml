@@ -1,0 +1,61 @@
+# =============================================================================
+#  Grafana — automatyczne podłączenie źródeł danych ze stacku
+#  Plik czytany przy starcie Grafany ($ZMIENNE pochodzą ze środowiska kontenera)
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+  # --- Prometheus (domyślne źródło) ------------------------------------------
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+
+  # --- Loki (logi) -----------------------------------------------------------
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: true
+    jsonData:
+      maxLines: 1000
+
+  # --- InfluxDB 2.x (Flux + token) -------------------------------------------
+  - name: InfluxDB
+    uid: influxdb
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    editable: true
+    jsonData:
+      version: Flux
+      organization: $INFLUX_ORG
+      defaultBucket: $INFLUX_BUCKET
+      httpMode: POST
+    secureJsonData:
+      token: $INFLUX_TOKEN
+
+  # --- Elasticsearch ---------------------------------------------------------
+  # Index pattern "logs-*" — zmień na swój, gdy zaczniesz wysyłać dane
+  - name: Elasticsearch
+    uid: elasticsearch
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    basicAuth: true
+    basicAuthUser: $ELASTIC_USER
+    editable: true
+    jsonData:
+      index: "logs-*"
+      timeField: "@timestamp"
+      maxConcurrentShardRequests: 5
+    secureJsonData:
+      basicAuthPassword: $ELASTIC_PASS

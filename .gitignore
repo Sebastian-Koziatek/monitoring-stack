@@ -1,0 +1,12 @@
+# Lokalne nadpisania konfiguracji (własne hasła, inne porty)
+.env.local
+docker-compose.override.yml
+
+# Dane i artefakty, które mogą powstać obok stacku
+data/
+*.log
+*.tar.gz
+
+# Śmieci systemowe
+.DS_Store
+Thumbs.db

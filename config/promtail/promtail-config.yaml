@@ -1,0 +1,29 @@
+# =============================================================================
+#  Promtail — wysyła logi z hosta do Lokiego
+#  (skrypt instalował samego Lokiego; bez agenta nie miałby czego zbierać)
+# =============================================================================
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /promtail/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Logi systemowe hosta (/var/log zamontowany read-only)
+  - job_name: varlogs
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: varlogs
+          host: monitoring-lab
+          __path__: /var/log/*log
+      - targets: [localhost]
+        labels:
+          job: varlogs
+          host: monitoring-lab
+          __path__: /var/log/**/*.log

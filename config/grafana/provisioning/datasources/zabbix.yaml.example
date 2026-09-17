@@ -1,0 +1,38 @@
+# =============================================================================
+#  Zabbix jako źródło danych w Grafanie — OPCJONALNE
+#
+#  Wymaga pluginu alexanderzobnin-zabbix-app (instaluje się sam przy pierwszym
+#  starcie Grafany, o ile kontener ma dostęp do internetu).
+#
+#  Aby włączyć:
+#    1. upewnij się, że plugin jest zainstalowany:
+#         docker compose exec grafana grafana cli plugins ls
+#    2. zmień nazwę tego pliku na zabbix.yaml
+#    3. docker compose restart grafana
+#
+#  UWAGA: jeśli plugin NIE jest zainstalowany, a plik nazywa się .yaml,
+#  provisioning zgłosi błąd przy starcie Grafany.
+# =============================================================================
+
+apiVersion: 1
+
+apps:
+  - type: alexanderzobnin-zabbix-app
+    org_id: 1
+    disabled: false
+
+datasources:
+  - name: Zabbix
+    uid: zabbix
+    type: alexanderzobnin-zabbix-datasource
+    access: proxy
+    url: http://zabbix-web:8080/api_jsonrpc.php
+    editable: true
+    jsonData:
+      username: Admin
+      trends: true
+      trendsFrom: 7d
+      trendsRange: 4d
+      cacheTTL: 1h
+    secureJsonData:
+      password: zabbix
