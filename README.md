@@ -9,12 +9,13 @@ Działa tak samo na **Dockerze** i na **Podmanie** (również rootless).
 
 | Komponent | Kontenery | Odpowiednik skryptu |
 |---|---|---|
-| ELK Stack | `elasticsearch`, `kibana`, `elk-setup` | Instalacja ELK Stack.md |
+| ELK Stack | `elasticsearch`, `kibana`, `elk-setup`, `filebeat`, `elasticsearch-exporter` | Instalacja ELK Stack.md |
 | Grafana | `grafana` | Instalacja Grafany.md |
 | InfluxDB + Telegraf | `influxdb`, `telegraf` | Instalacja InfluxDB i Telegraf.md |
 | Loki | `loki`, `promtail` | Instalacja Lokiego.md |
 | Prometheus | `prometheus`, `node-exporter` | Instalacja Prometheus i Node Exporter.md |
 | Zabbix 7.0 LTS | `zabbix-db`, `zabbix-server`, `zabbix-web`, `zabbix-agent` | Instalacja Zabbix.md |
+| Spinacz integracji | `stack-init` | — (dodatek) |
 
 ---
 
@@ -27,6 +28,7 @@ Działa tak samo na **Dockerze** i na **Podmanie** (również rootless).
 | Elasticsearch | http://HOST:9200 | `szkolenie` | `szkolenie` |
 | Prometheus | http://HOST:9090 | — | — |
 | Node Exporter | http://HOST:9100/metrics | — | — |
+| Elasticsearch Exporter | http://HOST:9114/metrics | — | — |
 | Telegraf (Prometheus) | http://HOST:9273/metrics | — | — |
 | Loki | http://HOST:3100/ready | — | — |
 | Promtail | http://HOST:9080 | — | — |
@@ -81,36 +83,77 @@ Jeśli host ma mniej niż 8 GB RAM, zmniejsz stertę Elasticsearcha w `.env`
 
 ## Co jest z czym spięte
 
+Wszystko poniżej działa **od razu po `up -d`**, bez klikania w GUI.
+
 ```
-node-exporter ─┐
-telegraf ──────┼──► prometheus ──┐
-loki ──────────┤                 │
-influxdb ──────┘                 │
-                                 ├──► GRAFANA (datasource'y wstrzyknięte
-promtail ──► loki ───────────────┤      automatycznie przez provisioning)
-                                 │
-telegraf ──► influxdb ───────────┤
-                                 │
-kibana ──► elasticsearch ────────┘  (ES też jako datasource Grafany)
-
-zabbix-agent ──► zabbix-server ──► zabbix-db (MariaDB)
-                       └──────────► zabbix-web (frontend :8081)
+node-exporter ─────┐
+telegraf ──────────┤
+loki ──────────────┼──► prometheus ──┐
+promtail ──────────┤                 │
+influxdb ──────────┤                 │
+es-exporter ───────┘                 │
+                                     ├──► GRAFANA
+telegraf ──────────► influxdb ───────┤    (5 datasource'ów + 5 dashboardów
+                                     │     z provisioningu)
+promtail ──────────► loki ───────────┤
+filebeat ──────────► elasticsearch ──┤
+                          ▲          │
+                       kibana        │
+                                     │
+zabbix-agent ─► zabbix-server ───────┘
+                     │   └──► zabbix-db (MariaDB)
+                     └──────► zabbix-web (frontend :8081)
 ```
 
-Konkretne powiązania:
+| Połączenie | Jak jest zrobione |
+|---|---|
+| Grafana → Prometheus, Loki, InfluxDB, Elasticsearch | provisioning, `datasources.yaml` |
+| Grafana → Zabbix | `stack-init` przez API Grafany (plugin + datasource) |
+| Prometheus → node_exporter, telegraf, loki, promtail, grafana, influxdb, es-exporter | `prometheus.yml`, 8 jobów |
+| Telegraf → InfluxDB | token/org/bucket z `.env` — bez wklejania tokenu ręcznie |
+| Telegraf → Elasticsearch | `inputs.elasticsearch` — statystyki klastra |
+| Telegraf → wszystkie usługi | `inputs.http_response` — syntetyczne testy dostępności |
+| Promtail → Loki | push na `loki:3100` |
+| Filebeat → Elasticsearch | index `filebeat-*`, te same logi co w Lokim |
+| Elasticsearch → Prometheus | `elasticsearch-exporter` na porcie 9114 |
+| Kibana → Elasticsearch | hasło `kibana_system` ustawia `elk-setup` |
+| Zabbix: agent → server → MariaDB, frontend → server | zmienne środowiskowe w compose |
+| Zabbix: host „Zabbix server" → kontener agenta | `stack-init` przez API Zabbixa |
 
-- **Prometheus** scrape'uje: siebie, `node-exporter`, `telegraf` (port 9273),
-  `loki`, `promtail`, `grafana`, `influxdb` — plik `config/prometheus/prometheus.yml`.
-- **Telegraf** pisze do InfluxDB v2 **i równolegle** wystawia te same metryki
-  w formacie Prometheusa, dodatkowo sprawdza dostępność wszystkich usług
-  (`inputs.http_response`) i czyta statystyki klastra Elasticsearch
-  (`inputs.elasticsearch`).
-- **Promtail** zbiera logi z `/var/log` hosta i wysyła do Lokiego.
-- **Grafana** ma gotowe źródła: Prometheus (domyślne), Loki, InfluxDB (Flux),
-  Elasticsearch. Zabbix — opcjonalnie, patrz niżej.
-- **elk-setup** to kontener jednorazowy: czeka na Elasticsearch, ustawia hasło
-  `kibana_system` i zakłada użytkownika `szkolenie` (rola superuser) — dokładnie
-  to, co w skrypcie robiły `elasticsearch-reset-password` i `curl`.
+Dwa kontenery jednorazowe domykają to, czego nie da się wstrzyknąć plikiem
+konfiguracyjnym:
+
+- **`elk-setup`** — czeka na Elasticsearch, ustawia hasło `kibana_system`
+  i zakłada użytkownika `szkolenie` (rola superuser).
+- **`stack-init`** — przestawia interfejs hosta „Zabbix server" z `127.0.0.1`
+  na kontener `zabbix-agent`, włącza plugin Zabbixa w Grafanie i zakłada
+  datasource `Zabbix`. Jest **idempotentny** — można go puszczać ponownie:
+
+  ```bash
+  docker compose up -d --force-recreate stack-init
+  docker compose logs stack-init
+  ```
+
+  Jeśli Grafana nie zdążyła zainstalować pluginu Zabbixa (dociąga go z
+  internetu przy pierwszym starcie), `stack-init` zgłasza to i kończy się
+  sukcesem — reszta stacku działa. Wystarczy potem puścić go jeszcze raz.
+
+### Gotowe dashboardy
+
+Wgrywają się same do folderu **Szkolenie**:
+
+| Dashboard | Źródło danych | Skąd |
+|---|---|---|
+| Stack szkoleniowy — przegląd | Prometheus | własny — stan wszystkich komponentów, CPU/RAM, czasy odpowiedzi, zdrowie ES |
+| Node Exporter Full | Prometheus | grafana.com ID 1860 |
+| InfluxDB / Telegraf (Flux) | InfluxDB | własny — te same metryki drugą ścieżką, zapytania w Flux |
+| Loki — logi hosta | Loki | grafana.com ID 13639 |
+| Elasticsearch — logi z Filebeata | Elasticsearch | własny — wolumen logów + podgląd wpisów |
+
+Dashboardy dla Influxa i ES są własne, bo gotowce z grafana.com pod Telegrafa
+(ID 928) używają InfluxQL, a nasz datasource pracuje w trybie **Flux** — nie
+pokazałyby żadnych danych. Własne pliki `.json` dorzucaj do
+`config/grafana/provisioning/dashboards/` i restartuj Grafanę.
 
 ---
 
@@ -130,30 +173,66 @@ docker compose logs elk-setup                                     # dane logowan
 
 Kibana potrzebuje 1–2 minut na pełny start — to normalne.
 
-### 2. Zabbix — wskaż agenta
+### 2. Dashboardy Filebeata w Kibanie (opcjonalnie)
 
-Domyślny host „Zabbix server" w Zabbixie ma interfejs `127.0.0.1`, a agent
-siedzi w osobnym kontenerze. W GUI: **Data collection → Hosts → Zabbix server →
-Interfaces** i zmień adres na `zabbix-agent` (DNS name), port `10050`.
-
-### 3. Zabbix w Grafanie (opcjonalnie)
+Filebeat wysyła logi od razu, ale gotowe dashboardy dla Kibany trzeba wgrać
+jedną komendą (wymaga wstałej Kibany):
 
 ```bash
-docker compose exec grafana grafana cli plugins ls     # czy plugin jest
-mv config/grafana/provisioning/datasources/zabbix.yaml.example \
-   config/grafana/provisioning/datasources/zabbix.yaml
-docker compose restart grafana
+docker compose exec filebeat filebeat setup --dashboards
 ```
 
-Plugin `alexanderzobnin-zabbix-app` instaluje się przy pierwszym starcie
-Grafany i wymaga internetu. Dopóki go nie ma, **nie** zmieniaj nazwy pliku na
-`.yaml` — provisioning wywali błąd przy starcie.
+### 3. Logi kontenerów (opcjonalnie)
 
-### 4. Dashboardy
+Promtail i Filebeat zbierają `/var/log` hosta. Logi samych kontenerów leżą
+w innym miejscu na Dockerze (`/var/lib/docker/containers`) niż na Podmanie
+(`~/.local/share/containers/storage/overlay-containers`), dlatego nie są
+montowane domyślnie — dopisz wolumen pasujący do swojego silnika.
 
-Pliki `.json` wrzuć do `config/grafana/provisioning/dashboards/` i zrestartuj
-Grafanę. Sprawdzone ID z grafana.com: **1860** (Node Exporter Full),
-**928** (Telegraf system metrics), **13639** (Loki logs).
+---
+
+## Trwałość danych (wolumeny)
+
+Każdy komponent, który cokolwiek przechowuje, ma **nazwany wolumen** — restart,
+`docker compose down`, aktualizacja obrazu czy reboot hosta nie kasują danych.
+
+| Wolumen | Kontener | Ścieżka | Co w nim jest |
+|---|---|---|---|
+| `es-data` | elasticsearch | `/usr/share/elasticsearch/data` | indeksy, dokumenty, konfiguracja security |
+| `kibana-data` | kibana | `/usr/share/kibana/data` | UUID instancji, cache |
+| `filebeat-data` | filebeat | `/usr/share/filebeat/data` | rejestr offsetów — po restarcie nie czyta logów od nowa |
+| `grafana-data` | grafana | `/var/lib/grafana` | baza SQLite: userzy, dashboardy, alerty, pluginy |
+| `prometheus-data` | prometheus | `/prometheus` | baza TSDB z metrykami (retencja 15 dni) |
+| `loki-data` | loki | `/loki` | chunki logów, indeksy TSDB, WAL |
+| `promtail-positions` | promtail | `/promtail` | pozycje w plikach — bez duplikatów po restarcie |
+| `influxdb-data` | influxdb | `/var/lib/influxdb2` | dane serii czasowych |
+| `influxdb-config` | influxdb | `/etc/influxdb2` | organizacja, bucket, tokeny |
+| `zabbix-db-data` | zabbix-db | `/var/lib/mysql` | cała baza Zabbixa (hosty, historia, konfiguracja) |
+| `zabbix-server-data` | zabbix-server | `/var/lib/zabbix` | skrypty alertów, moduły, snmptraps |
+
+Co **nie** jest na wolumenie i nie musi być: `node-exporter`, `telegraf`,
+`elasticsearch-exporter`, `zabbix-agent` i `zabbix-web` nie trzymają stanu —
+wszystko, co produkują, ląduje w bazach powyżej.
+
+Podgląd i backup:
+
+```bash
+docker compose config --volumes            # lista wolumenów stacku
+docker volume ls | grep monitoring-lab     # jak nazywa je silnik
+docker system df -v | grep monitoring-lab  # ile miejsca zajmują
+
+# backup pojedynczego wolumenu do tar.gz
+docker run --rm -v monitoring-lab_grafana-data:/data -v "$PWD:/backup" \
+  alpine:3.21 tar czf /backup/grafana-$(date +%F).tar.gz -C /data .
+```
+
+Pod Podmanem te same komendy działają po podmianie `docker` na `podman`.
+Wolumeny są tworzone przy pierwszym starcie i **przeżywają `down`** — kasuje je
+dopiero `down -v`.
+
+Przy pierwszym montowaniu oba silniki kopiują do wolumenu zawartość katalogu
+z obrazu wraz z właścicielem, więc Elasticsearch (uid 1000), Grafana (472) czy
+Loki (10001) mają prawo pisać także w trybie rootless.
 
 ---
 
@@ -214,10 +293,11 @@ monitoring-stack/
     ├── loki/loki-config.yaml             # TSDB + filesystem, retencja 7 dni
     ├── promtail/promtail-config.yaml     # zbiera /var/log hosta
     ├── telegraf/telegraf.conf            # InfluxDB v2 + prometheus_client
+    ├── filebeat/filebeat.yml             # logi hosta -> Elasticsearch
+    ├── init/stack-init.sh                # API Zabbixa + API Grafany
     └── grafana/provisioning/
         ├── datasources/datasources.yaml  # Prometheus, Loki, InfluxDB, ES
-        ├── datasources/zabbix.yaml.example
-        └── dashboards/dashboards.yaml
+        └── dashboards/                   # provider + 5 gotowych dashboardów
 ```
 
 ---
@@ -230,5 +310,8 @@ monitoring-stack/
 | `elasticsearch-reset-password` + `curl` | kontener `elk-setup` robi to samo przez API |
 | ręczne `influx setup` + wklejanie tokenu | `DOCKER_INFLUXDB_INIT_*` + token z `.env` |
 | Zabbix na Apache, port 80 | Zabbix na nginx, port 8081 (rootless Podman) |
-| brak agenta logów | dołożony Promtail — bez niego Loki stoi pusty |
+| brak agenta logów | dołożony Promtail (Loki) i Filebeat (Elasticsearch) |
 | datasource'y klikane ręcznie w GUI | provisioning z pliku przy starcie Grafany |
+| Zabbix i Grafana nie wiedzą o sobie | `stack-init` spina je przez API |
+| brak metryk ES w Prometheusie | dołożony elasticsearch-exporter |
+| pusta Grafana po instalacji | 5 dashboardów wgranych z provisioningu |

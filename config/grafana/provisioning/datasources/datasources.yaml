@@ -44,7 +44,7 @@ datasources:
       token: $INFLUX_TOKEN
 
   # --- Elasticsearch ---------------------------------------------------------
-  # Index pattern "logs-*" — zmień na swój, gdy zaczniesz wysyłać dane
+  # Index pattern "filebeat-*" — dane wsypuje tu kontener filebeat
   - name: Elasticsearch
     uid: elasticsearch
     type: elasticsearch
@@ -54,7 +54,7 @@ datasources:
     basicAuthUser: $ELASTIC_USER
     editable: true
     jsonData:
-      index: "logs-*"
+      index: "filebeat-*"
       timeField: "@timestamp"
       maxConcurrentShardRequests: 5
     secureJsonData:

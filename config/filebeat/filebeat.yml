@@ -1,0 +1,43 @@
+# =============================================================================
+#  Filebeat — wysyła logi hosta do Elasticsearcha
+#
+#  Dzięki temu te same logi, które Promtail wysyła do Lokiego, lądują też
+#  w ELK-u — uczestnicy mogą porównać oba podejścia na identycznych danych.
+#  Dane trafiają do data streamu "filebeat-<wersja>" (index pattern filebeat-*).
+# =============================================================================
+
+filebeat.inputs:
+  - type: filestream
+    id: host-logs
+    enabled: true
+    paths:
+      - /var/log/*.log
+      - /var/log/syslog
+      - /var/log/messages
+    # Etykiety spójne z tym, co Promtail wysyła do Lokiego
+    fields:
+      job: varlogs
+      stack: monitoring-lab
+    fields_under_root: true
+
+processors:
+  - add_host_metadata:
+      when.not.contains.tags: forwarded
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  username: "${ELASTIC_USERNAME}"
+  password: "${ELASTIC_PASSWORD}"
+
+# Kibana potrzebna tylko do wgrania gotowych dashboardów Filebeata:
+#   docker compose exec filebeat filebeat setup --dashboards
+setup.kibana:
+  host: "http://kibana:5601"
+  username: "${ELASTIC_USERNAME}"
+  password: "${ELASTIC_PASSWORD}"
+
+setup.ilm.enabled: true
+setup.template.enabled: true
+
+logging.level: info
+logging.to_files: false

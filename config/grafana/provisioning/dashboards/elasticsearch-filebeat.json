@@ -1,0 +1,135 @@
+{
+ "id": null,
+ "uid": "es-filebeat",
+ "title": "Elasticsearch — logi z Filebeata",
+ "description": "Logi hosta wysłane przez Filebeata do Elasticsearcha (index filebeat-*). Te same wpisy Promtail wysyła do Lokiego — porównaj oba dashboardy.",
+ "tags": [
+  "szkolenie"
+ ],
+ "timezone": "browser",
+ "editable": true,
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "30s",
+ "time": {
+  "from": "now-1h",
+  "to": "now"
+ },
+ "timepicker": {},
+ "templating": {
+  "list": []
+ },
+ "annotations": {
+  "list": []
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "timeseries",
+   "title": "Liczba logów w czasie",
+   "datasource": {
+    "type": "elasticsearch",
+    "uid": "elasticsearch"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 60,
+      "lineWidth": 1
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "single",
+     "sort": "none"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "query": "*",
+     "alias": "logi",
+     "timeField": "@timestamp",
+     "metrics": [
+      {
+       "id": "1",
+       "type": "count"
+      }
+     ],
+     "bucketAggs": [
+      {
+       "id": "2",
+       "type": "date_histogram",
+       "field": "@timestamp",
+       "settings": {
+        "interval": "auto",
+        "min_doc_count": "0"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "type": "logs",
+   "title": "Ostatnie logi",
+   "datasource": {
+    "type": "elasticsearch",
+    "uid": "elasticsearch"
+   },
+   "gridPos": {
+    "h": 14,
+    "w": 24,
+    "x": 0,
+    "y": 8
+   },
+   "options": {
+    "showTime": true,
+    "showLabels": false,
+    "showCommonLabels": false,
+    "wrapLogMessage": true,
+    "prettifyLogMessage": false,
+    "enableLogDetails": true,
+    "dedupStrategy": "none",
+    "sortOrder": "Descending"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "query": "*",
+     "timeField": "@timestamp",
+     "metrics": [
+      {
+       "id": "1",
+       "type": "logs",
+       "settings": {
+        "limit": "200"
+       }
+      }
+     ],
+     "bucketAggs": []
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   }
+  }
+ ]
+}

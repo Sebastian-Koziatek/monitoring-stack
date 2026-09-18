@@ -19,6 +19,8 @@ networks:
 
 volumes:
   es-data:
+  kibana-data:
+  filebeat-data:
   grafana-data:
   influxdb-data:
   influxdb-config:
@@ -106,8 +108,53 @@ services:
       - XPACK_SECURITY_ENCRYPTIONKEY=${KIBANA_ENCRYPTION_KEY}
       - XPACK_REPORTING_ENCRYPTIONKEY=${KIBANA_ENCRYPTION_KEY}
       - I18N_LOCALE=en
+    volumes:
+      - kibana-data:/usr/share/kibana/data
     ports:
       - "5601:5601"
+    networks:
+      - monitoring
+
+  # Filebeat — wysyła logi hosta do Elasticsearcha (te same, które Promtail
+  # wysyła do Lokiego). Bez niego ELK stoi pusty.
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.17.0
+    container_name: filebeat
+    restart: unless-stopped
+    # --strict.perms=false — konfiguracja przychodzi z bind-mounta hosta
+    # i nie należy do roota w kontenerze
+    command: ["filebeat", "-e", "--strict.perms=false"]
+    depends_on:
+      - elasticsearch
+    environment:
+      - ELASTIC_USERNAME=elastic
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+    volumes:
+      - ./config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro,z
+      - filebeat-data:/usr/share/filebeat/data
+      - /var/log:/var/log:ro
+    # Jeśli SELinux blokuje czytanie /var/log, odkomentuj (NIE dawaj tu ":z"!):
+    # security_opt:
+    #   - label=disable
+    networks:
+      - monitoring
+
+  # Exporter metryk Elasticsearcha dla Prometheusa (ES sam ich nie wystawia)
+  elasticsearch-exporter:
+    image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.9.0
+    container_name: elasticsearch-exporter
+    restart: unless-stopped
+    depends_on:
+      - elasticsearch
+    command:
+      - --es.uri=http://${TRAINING_USER}:${TRAINING_PASSWORD}@elasticsearch:9200
+      - --es.all
+      - --es.indices
+      - --es.indices_settings
+      - --es.cluster_settings
+      - --web.listen-address=:9114
+    ports:
+      - "9114:9114"
     networks:
       - monitoring
 
@@ -358,5 +405,40 @@ services:
       - ZBX_ACTIVE_ALLOW=true
     ports:
       - "10050:10050"
+    networks:
+      - monitoring
+
+  # ===========================================================================
+  #  STACK-INIT — domyka integracje, których nie da się wstrzyknąć plikiem
+  #
+  #  1. Zabbix API: host "Zabbix server" dostaje interfejs agenta na kontener
+  #     zabbix-agent (domyślnie wskazuje 127.0.0.1, gdzie agenta nie ma)
+  #  2. Grafana API: włącza plugin Zabbixa i zakłada datasource Zabbix
+  #
+  #  Kontener jednorazowy i idempotentny — można go uruchamiać ponownie:
+  #     docker compose up -d --force-recreate stack-init
+  # ===========================================================================
+
+  stack-init:
+    image: alpine:3.21
+    container_name: stack-init
+    restart: "no"
+    depends_on:
+      - zabbix-web
+      - grafana
+    environment:
+      - ZBX_URL=http://zabbix-web:8080/api_jsonrpc.php
+      - ZBX_USER=Admin
+      - ZBX_PASSWORD=zabbix
+      - ZBX_AGENT_DNS=zabbix-agent
+      - GRAFANA_URL=http://grafana:3000
+      - GRAFANA_ADMIN_USER=${GRAFANA_ADMIN_USER}
+      - GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - ./config/init:/init:ro,z
+    entrypoint:
+      - sh
+      - -c
+      - "apk add --no-cache --quiet curl jq && exec sh /init/stack-init.sh"
     networks:
       - monitoring

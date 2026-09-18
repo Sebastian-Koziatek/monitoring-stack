@@ -52,9 +52,8 @@ scrape_configs:
     static_configs:
       - targets: ["influxdb:8086"]
 
-  # Elasticsearch nie wystawia metryk w formacie Prometheusa bez exportera.
-  # Aby je zbierać, dołóż do stacku prometheuscommunity/elasticsearch-exporter
-  # i odkomentuj:
-  # - job_name: elasticsearch
-  #   static_configs:
-  #     - targets: ["elasticsearch-exporter:9114"]
+  # Elasticsearch nie wystawia metryk w formacie Prometheusa sam z siebie —
+  # robi to za niego elasticsearch-exporter
+  - job_name: elasticsearch
+    static_configs:
+      - targets: ["elasticsearch-exporter:9114"]
