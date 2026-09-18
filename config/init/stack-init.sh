@@ -55,12 +55,24 @@ echo "==== KROK 1: Zabbix — interfejs hosta '${ZBX_HOST_NAME}' ===="
 
 if wait_for "http://zabbix-web:8080/" "frontend Zabbixa" 60; then
 
-  TOKEN=$(zbx_api user.login \
-    "{\"username\":\"${ZBX_USER}\",\"password\":\"${ZBX_PASSWORD}\"}" \
-    | jq -r '.result // empty')
+  # Frontend odpowiada zanim Zabbix server skończy import schematu bazy,
+  # więc logowanie ponawiamy aż API zacznie działać (do ~5 minut).
+  TOKEN=""
+  i=0
+  while [ -z "${TOKEN}" ] && [ "${i}" -lt 30 ]; do
+    TOKEN=$(zbx_api user.login \
+      "{\"username\":\"${ZBX_USER}\",\"password\":\"${ZBX_PASSWORD}\"}" \
+      | jq -r '.result // empty')
+    if [ -z "${TOKEN}" ]; then
+      [ "${i}" -eq 0 ] && echo "  czekam na API Zabbixa (import schematu bazy) ..."
+      i=$((i + 1))
+      sleep 10
+    fi
+  done
 
   if [ -z "${TOKEN}" ]; then
     echo "  ✗ Nie udało się zalogować do API Zabbixa (user ${ZBX_USER})"
+    echo "    Sprawdź:  docker compose logs zabbix-server | tail -30"
     echo "    Jeśli zmieniałeś hasło Admina, przestaw ZBX_PASSWORD w compose."
   else
     echo "  ✓ Zalogowany do API Zabbixa"
@@ -103,6 +115,15 @@ echo ""
 echo "==== KROK 2: Grafana — datasource Zabbix ===="
 
 if wait_for "${GRAFANA_URL}/api/health" "Grafana" 60; then
+
+  # Grafana dociąga plugin w tle już po otwarciu portu — dajmy jej ~2 minuty
+  i=0
+  while ! curl -sf -u "${GRAFANA_AUTH}" "${GRAFANA_URL}/api/plugins/${ZBX_PLUGIN}/settings" >/dev/null 2>&1 \
+        && [ "${i}" -lt 12 ]; do
+    [ "${i}" -eq 0 ] && echo "  czekam na instalację pluginu ${ZBX_PLUGIN} ..."
+    i=$((i + 1))
+    sleep 10
+  done
 
   if ! curl -sf -u "${GRAFANA_AUTH}" "${GRAFANA_URL}/api/plugins/${ZBX_PLUGIN}/settings" >/dev/null 2>&1; then
     echo "  ○ Plugin ${ZBX_PLUGIN} nie jest zainstalowany"

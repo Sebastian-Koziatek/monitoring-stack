@@ -134,9 +134,11 @@ konfiguracyjnym:
   docker compose logs stack-init
   ```
 
-  Jeśli Grafana nie zdążyła zainstalować pluginu Zabbixa (dociąga go z
-  internetu przy pierwszym starcie), `stack-init` zgłasza to i kończy się
-  sukcesem — reszta stacku działa. Wystarczy potem puścić go jeszcze raz.
+  `stack-init` sam czeka na to, co wstaje wolno: na import schematu bazy
+  Zabbixa (do 5 minut) i na dociągnięcie pluginu Zabbixa przez Grafanę
+  (do 2 minut). Jeśli mimo to się nie doczeka — zgłasza to i kończy się
+  sukcesem, żeby nie blokować reszty stacku. Wystarczy wtedy puścić go
+  ponownie komendą powyżej.
 
 ### Gotowe dashboardy
 
