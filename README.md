@@ -23,19 +23,22 @@ Działa tak samo na **Dockerze** i na **Podmanie** (również rootless).
 
 | Usługa | URL | Login | Hasło |
 |---|---|---|---|
-| Grafana | http://HOST:3000 | `admin` | `admin` |
-| Kibana | http://HOST:5601 | `szkolenie` | `szkolenie` |
-| Elasticsearch | http://HOST:9200 | `szkolenie` | `szkolenie` |
-| Prometheus | http://HOST:9090 | — | — |
-| Node Exporter | http://HOST:9100/metrics | — | — |
-| Elasticsearch Exporter | http://HOST:9114/metrics | — | — |
-| Telegraf (Prometheus) | http://HOST:9273/metrics | — | — |
-| Loki | http://HOST:3100/ready | — | — |
-| Promtail | http://HOST:9080 | — | — |
-| InfluxDB | http://HOST:8086 | `admin` | `Influx123!` |
-| Zabbix frontend | http://HOST:8081 | `Admin` | `zabbix` |
-| Zabbix server (trapper) | HOST:10051 | — | — |
-| Zabbix agent | HOST:10050 | — | — |
+| Grafana | http://localhost:3000 | `admin` | `admin` |
+| Kibana | http://localhost:5601 | `szkolenie` | `szkolenie` |
+| Elasticsearch | http://localhost:9200 | `szkolenie` | `szkolenie` |
+| Prometheus | http://localhost:9090 | — | — |
+| Node Exporter | http://localhost:9100/metrics | — | — |
+| Elasticsearch Exporter | http://localhost:9114/metrics | — | — |
+| Telegraf (Prometheus) | http://localhost:9273/metrics | — | — |
+| Loki | http://localhost:3100/ready | — | — |
+| Promtail | http://localhost:9080 | — | — |
+| InfluxDB | http://localhost:8086 | `admin` | `Influx123!` |
+| Zabbix frontend | http://localhost:8081 | `Admin` | `zabbix` |
+| Zabbix server (trapper) | localhost:10051 | — | — |
+| Zabbix agent | localhost:10050 | — | — |
+
+Adresy są dla stacku uruchomionego lokalnie. Jeśli stoi na innej maszynie,
+podmień `localhost` na jej adres IP (i pamiętaj o otwarciu portów na firewallu).
 
 Wszystkie hasła siedzą w pliku `.env`, który jest w repozytorium celowo — stack
 ma wstawać od razu po `git clone`. To hasła **szkoleniowe**, jawne także w tabeli
